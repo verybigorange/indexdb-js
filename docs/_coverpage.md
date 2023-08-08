@@ -1,6 +1,6 @@
-# idb-js <small>1.3.1</small>
+# idb-js <small>2.0.0</small>
 
-> 基于indedb的封装，用起来更加简单。
+> 基于indedb的封装，简单易用。
 
 * 作者：verybigorange
 * QQ: 449732828

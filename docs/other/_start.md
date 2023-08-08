@@ -2,7 +2,7 @@
 #### 安装
 使用npm安装 `idb-js` 依赖
 ```bash
-npm i idb-js
+npm install idb-js
 ```
 #### 使用
 * 第一步： 引入Idb
@@ -11,10 +11,26 @@ npm i idb-js
 ```
 * 第二步： 引入数据库配置
 ```
-    import db_student_config from './db_student_config'
+    import IDB_Config from './IDB_Config.js'
 ```
   
 * 第三步： 载入配置，数据库开启成功拿到数据库实例进行操作
 ```
-    Idb(db_student_config).then(student_db => {...})
+    Idb(IDB_Config).then(IDB => {...})
+```
+
+#### 数据库配置
+IDB_Config.js
+
+```
+export default {
+  dbName: "myDB",
+  version: 1,
+  tables: [
+    {
+      tableName: "表名1",
+      option: { keyPath: "id" },
+    },
+  ],
+};
 ```

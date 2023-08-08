@@ -1,154 +1,118 @@
 import Idb from "../src/Idb";
 import db_student_config from "./db_student_config";
 
-Idb(db_student_config).then(
-  student_db => {
-    // 增
-    student_db.insert({
+(async function () {
+  const IDB = await Idb(db_student_config);
+  console.log(IDB);
+
+  try {
+    // 添加一条数据
+    await IDB.add({
       tableName: "grade",
       data: {
         id: 1,
         score: 98,
-        name: "小明"
-      }
-    });
-    student_db.insert({
-      tableName: "grade",
-      data: {
-        id: 1,
-        score: 99,
-        name: "小明"
-      }
-    });
-    student_db.insert({
-      tableName: "grade",
-      data: {
-        id: 2,
-        score: 100,
-        name: "小红"
-      }
-    });
-    student_db.insert({
-      tableName: "grade",
-      data: {
-        id: 3,
-        score: 100,
-        name: "小华"
-      }
-    });
-    student_db.insert({
-      tableName: "info",
-      data: {
-        id: 1,
-        age: 18,
         name: "小明",
-        sex: 1
-      }
+      },
     });
-    
-    student_db.insert({
-      tableName: "info",
+    console.log("数据添加成功");
+  } catch (error) {
+    console.log("数据添加失败", error);
+  }
+
+  // 添加多条数据
+  try {
+    await IDB.add({
+      tableName: "grade",
       data: [
         {
           id: 2,
-          age: 13,
-          name: "小1",
-          sex: 2
+          score: 99,
+          name: "小红",
         },
         {
           id: 3,
-          age: 11,
-          name: "小2",
-          sex: 1
-        }
+          score: 100,
+          name: "小刚",
+        },
+        {
+          id: 4,
+          score: 67,
+          name: "小刚刚",
+        },
+        {
+          id: 5,
+          score: 100,
+          name: "小李",
+        },
+        {
+          id: 6,
+          score: 100,
+          name: "小高",
+        },
       ],
-      success: () => console.log("添加成功")
     });
+  } catch (error) {}
 
-    setTimeout(() => {
-      // 查
-      student_db.query({
-        tableName: "grade",
-        condition: item => item.score == 100,
-        success: r => {
-          console.log(r);
-        }
-      });
-    }, 1000);
+  // 按分页查询
+  const res = await IDB.query({
+    tableName: "grade",
+    condition: (item, index) => {
+      const page = 2;
+      const pageSize = 2;
+      const min = (page - 1) * pageSize;
+      const max = page * pageSize;
+      return index >= min && index < max;
+    },
+  });
+  console.log(`按分页查询`, res);
 
-    // 改
-    student_db.update({
-      tableName: "grade",
-      condition: item => item.score == 100,
-      handle: r => {
-        r.name = "我的name被修改了";
-      },
-      success: r => {
-        console.log("修改成功", r);
-      },
-      error: msg => console.log(msg)
-    });
+  // 按条件查询
+  const res1 = await IDB.query({
+    tableName: "grade",
+    condition: (item, index) => item.score == 100,
+  });
+  console.log(`按条件查询：`, res1);
 
-    student_db.queryAll({
-      tableName: "grade",
-      success: res => {
-        console.log(res);
-      }
-    });
+  // 查询全部
+  const res2 = await IDB.query({
+    tableName: "grade",
+  });
+  console.log(`查询全部:`, res2);
 
-    student_db.query_by_primaryKey({
-      tableName: "grade",
-      target: 1,
-      success: res => {
-        console.log(res);
-      }
-    });
+  // 根据条件修改
+  const res3 = await IDB.update({
+    tableName: "grade",
+    condition: (item, index) => item.score == 100,
+    handler: (row) => {
+      row.name = "新名字";
+    },
+  });
+  console.log("根据条件修改的数据：", res3);
 
-    student_db.query_by_index({
-      tableName: "grade",
-      indexName: "name",
-      target: "小明",
-      success: res => {
-        console.log(res);
-      }
-    });
-    // 删除
-    // student_db.delete({
-    //   tableName: "grade",
-    //   condition: (item)=> item.score == 100,
-    //   success: () => {
-    //     console.log("删除成功");
-    //   }
-    // });
+  // 全部数据修改-增加新字段
+  const res4 = await IDB.update({
+    tableName: "grade",
+    handler: (row, index) => {
+      row.newField = "这是新字段";
+    },
+  });
+  console.log("全部数据修改-增加新字段：", res4);
 
-    // 关闭该数据库
-    // student_db.close_db();
+  // 删除数据
+  const res5 = await IDB.delete({
+    tableName: "grade",
+    condition: (item, index) => item.name === "小红",
+  });
+  console.log("删除的数据：", res5);
 
-    // 删除该数据库
-    // student_db.delete_db();
+  // 开启一个事务
+  const store = await IDB.transaction("grade");
+  store.getAll().onsuccess = function (event) {
+    console.log("开启一个事务，查询所有数据:", event.target.result);
+  };
 
-    //清空某张表的数据
-    // student_db.clear_table({
-    //   tableName:'grade'
-    // })
-
-    // 通过主键删除某条数据
-    // student_db.delete_by_primaryKey({
-    //   tableName:'grade',
-    //   target:1,
-    //   success:()=>console.log('删除成功')
-    // })
-
-    // student_db.update_by_primaryKey({
-    //   tableName: "grade",
-    //   target: 1,
-    //   handle: val => (val.score = 101),
-    //   success: res => {
-    //     console.log(res);
-    //   }
-    // });
-  },
-  err => {
-    console.log(err);
-  }
-);
+  // 获取IDBDatabase对象
+  const db = await IDB.getDB();
+  console.log("getDB", db);
+})();
