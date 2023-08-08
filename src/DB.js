@@ -2,6 +2,7 @@ import Dep from "./uitils/Dep.js";
 import { log_error } from "./uitils/log";
 import { indexedDB, IDBTransaction, IDBKeyRange } from "./global";
 import { isArray, isObject } from "./uitils/type.js";
+import { NAME } from "./uitils/config.js";
 
 class DB {
   constructor({ dbName, version }) {
@@ -9,7 +10,7 @@ class DB {
     this.version = version;
     this.db = null;
     this.idb = null;
-    this.table = [];
+    this.tables = [];
     this._status = false; // 是否先添加了表
     this._dep_ = new Dep();
   }
@@ -29,7 +30,7 @@ class DB {
     }
 
     // 打开前要先添加表
-    if (this.table.length == 0 && !this._status) {
+    if (this.tables.length == 0 && !this._status) {
       log_error("打开前要先用add_table添加表");
       return;
     }
@@ -41,44 +42,23 @@ class DB {
 
     const request = indexedDB.open(this.dbName, this.version);
 
-    request.onerror = e => {
+    request.onerror = (e) => {
       error(e.currentTarget.error.message);
     };
 
-    request.onsuccess = e => {
+    request.onsuccess = (e) => {
       this.db = e.target.result;
       success(this.db);
       this._dep_.notify();
     };
 
-    request.onupgradeneeded = e => {
+    request.onupgradeneeded = (e) => {
       this.idb = e.target.result;
 
-      for (let i = 0; i < this.table.length; i++) {
-        this.__create_table(this.idb, this.table[i]);
+      for (let i = 0; i < this.tables.length; i++) {
+        this.__create_table(this.idb, this.tables[i]);
       }
     };
-  }
-
-  //  关闭数据库
-  close_db() {
-    const handler = () => {
-      this.db.close();
-    };
-
-    this.__action(handler);
-  }
-
-  // 删除数据库
-  delete_db() {
-    indexedDB.deleteDatabase(name);
-  }
-
-  //清空某张表的数据
-  clear_table({ tableName }) {
-    this.__action(() =>
-      this.__create_transaction(tableName, "readwrite").clear()
-    );
   }
 
   /**
@@ -90,72 +70,67 @@ class DB {
    * */
   add_table(tableOption = {}) {
     this._status = false;
-    this.table.push(tableOption);
+    this.tables.push(tableOption);
   }
 
   /**
-   * @method 查询某张表的所有数据
-   * @param {Object}
-   *   @property {String} tableName 表名
-   *   @property {Function} [success] @return {Array} 查询成功的回调，返回查到的结果
+   * 开启一个事务
+   * @param tableName 表名
+   * @param mode 模式 readonly | readwrite
+   * @return promise<store>
    * */
-  queryAll({ tableName, success = () => {} }) {
-    if (typeof success !== "function") {
-      log_error("queryAll方法中success必须是一个Function类型");
-      return;
-    }
+  transaction(tableName, mode = "readwrite") {
+    return this.__action(() =>
+      this.db.transaction(tableName, mode).objectStore(tableName)
+    );
+  }
 
-    const handler = () => {
-      const res = [];
-
-      this.__create_transaction(
-        tableName,
-        "readonly"
-      ).openCursor().onsuccess = e =>
-        this.__cursor_success(e, {
-          condition: () => true,
-          handler: ({ currentValue }) => res.push(currentValue),
-          over: () => success(res)
-        });
-    };
-
-    this.__action(handler);
+  /**
+   * 返回IDBDatabase对象
+   * @return promise<IDBDatabase>
+   * */
+  getDB() {
+    return this.__action(() => this.db);
   }
 
   /**
    * @method 查询
    * @param {Object}
    *   @property {String} tableName 表名
-   *   @property {Function} condition 查询的条件
+   *   @property {Function} condition 查询的条件,如果不传，默认查询全部数据
    *      @arg {Object} 遍历每条数据，和filter类似
+   *      @arg {number} 索引index，从0开始
    *      @return 条件
-   *   @property {Function} [success] @return {Array} 查询成功的回调，返回查到的结果
+   *  @return Promise<[]>
    * */
-  query({ tableName, condition, success = () => {} }) {
-    if (typeof success !== "function") {
-      log_error("query方法中success必须是一个Function类型");
-      return;
-    }
-
-    if (typeof condition !== "function") {
-      log_error("in query,condition is required,and type is function");
-      return;
-    }
-    const handler = () => {
-      let res = [];
-
+  query({ tableName, condition = () => true }) {
+    return this.__action(() =>
       this.__create_transaction(
         tableName,
+        (store) => {
+          return new Promise(async (resolve, reject) => {
+            try {
+              const res = [];
+              let index = 0;
+              this.__openCursor(store, async (cursor) => {
+                if (cursor) {
+                  if (await condition(cursor.value, index)) {
+                    res.push(cursor.value);
+                  }
+                  cursor.continue();
+                  index++;
+                } else {
+                  resolve(res);
+                }
+              });
+            } catch (error) {
+              reject(error);
+            }
+          });
+        },
         "readonly"
-      ).openCursor().onsuccess = e =>
-        this.__cursor_success(e, {
-          condition,
-          handler: ({ currentValue }) => res.push(currentValue),
-          over: () => success(res)
-        });
-    };
-
-    this.__action(handler);
+      )
+    );
   }
 
   /**
@@ -164,273 +139,177 @@ class DB {
    *   @property {String} tableName 表名
    *   @property {Object} data 插入的数据
    *   @property {Function} [success] 插入成功的回调
+   *  @return {Promise}
    * */
-  insert({ tableName, data, success = () => {} }) {
+  add({ tableName, data }) {
     if (!(isArray(data) || isObject(data))) {
       log_error("in insert，data type is Object or Array");
       return;
     }
 
-    if (typeof success !== "function") {
-      log_error("insert方法中success必须是一个Function类型");
-      return;
-    }
-
-    this.__action(() => {
-      const store = this.__create_transaction(tableName, "readwrite");
-      isArray(data) ? data.forEach(v => store.put(v)) : store.put(data);
-      // this.__create_transaction(tableName, "readwrite").add(data);
-      success();
-    });
+    return this.__action(() =>
+      this.__create_transaction(
+        tableName,
+        (store) => {
+          isArray(data) ? data.forEach((v) => store.add(v)) : store.add(data);
+        },
+        "readwrite"
+      )
+    );
   }
 
   /**
    * @method 删除数据
    * @param {Object}
    *   @property {String} tableName 表名
-   *   @property {Function} condition 查询的条件，遍历，与filter类似
+   *   @property {Function} condition 查询的条件，遍历，与filter类似,默认全部数据
    *      @arg {Object} 每个元素
-   *      @return 条件
-   *   @property {Function} [success] 删除成功的回调  @return {Array} 返回被删除的值
-   *   @property {Function} [error] 错误函数 @return {String}
+   *      @arg {Number} 索引index，从0开始
    * */
-  delete({ tableName, condition, success = () => {} }) {
-    if (typeof success !== "function") {
-      log_error("delete方法中success必须是一个Function类型");
-      return;
-    }
-
-    if (typeof condition !== "function") {
-      log_error("in delete,condition is required,and type is function");
-      return;
-    }
-
-    const handler = () => {
-      let res = [];
-
+  delete({ tableName, condition = () => true }) {
+    return this.__action(() =>
       this.__create_transaction(
         tableName,
-        "readwrite"
-      ).openCursor().onsuccess = e =>
-        this.__cursor_success(e, {
-          condition,
-          handler: ({ currentValue, cursor }) => {
-            res.push(currentValue);
-            cursor.delete();
-          },
-          over: () => {
-            if (res.length == 0) {
-              log_error(`in delete ,数据库中没有任何符合condition的元素`);
-              return;
+        (store) => {
+          return new Promise(async (resolve, reject) => {
+            try {
+              const res = [];
+              let index = 0;
+              this.__openCursor(store, async (cursor) => {
+                if (cursor) {
+                  let curValue = cursor.value;
+                  if (await condition(curValue, index)) {
+                    cursor.delete(curValue);
+                    res.push(curValue);
+                  }
+                  cursor.continue();
+                  index++;
+                } else {
+                  resolve(res);
+                }
+              });
+            } catch (error) {
+              reject(error);
             }
-            success(res);
-          }
-        });
-    };
-
-    this.__action(handler);
-  }
-
-  /**
-   * @method 删除数据(主键)
-   * @param {Object}
-   *   @property {String} tableName 表名
-   *   @property {String\|Number} target 目标主键值
-   *   @property {Function} [success] 删除成功的回调  @return {Null}
-   * */
-  delete_by_primaryKey({
-    tableName,
-    target,
-    success = () => {},
-    error = () => {}
-  }) {
-    if (typeof success !== "function") {
-      log_error("in delete_by_primaryKey，success必须是一个Function类型");
-      return;
-    }
-
-    this.__action(() => {
-      const request = this.__create_transaction(tableName, "readwrite").delete(
-        target
-      );
-      request.onsuccess = () => success();
-      request.onerror = () => error();
-    });
-  }
-
-  /**
-   * @method 修改某条数据(主键)
-   * @param {Object}
-   *   @property {String} tableName 表名
-   *   @property {String\|Number} target 目标主键值
-   *   @property {Function} handle 处理函数，接收本条数据的引用，对其修改
-   *   @property {Function} [success] 修改成功的回调   @return {Object} 返回被修改后的值
-   * */
-  update_by_primaryKey({ tableName, target, success = () => {}, handle }) {
-    if (typeof success !== "function") {
-      log_error("in update_by_primaryKey，success必须是一个Function类型");
-      return;
-    }
-    if (typeof handle !== "function") {
-      log_error("in update_by_primaryKey，handle必须是一个Function类型");
-      return;
-    }
-
-    this.__action(() => {
-      const store = this.__create_transaction(tableName, "readwrite");
-      store.get(target).onsuccess = e => {
-        const currentValue = e.target.result;
-        handle(currentValue);
-        store.put(currentValue);
-        success(currentValue);
-      };
-    });
+          });
+        },
+        "readwrite"
+      )
+    );
   }
 
   /**
    * @method 修改数据
    * @param {Object}
    *   @property {String} tableName 表名
-   *   @property {Function} condition 查询的条件，遍历，与filter类似
+   *   @property {Function} condition 查询的条件，遍历，与filter类似,默认全部数据
    *      @arg {Object} 每个元素
-   *      @return 条件
-   *   @property {Function} handle 处理函数，接收本条数据的引用，对其修改
-   *   @property {Function} [success] 修改成功的回调，返回修改成功的数据   @return {Array} 返回被修改后的值
+   *      @arg {Number} 索引index，从0开始
+   *   @property {Function} handler 处理函数，接收本条数据的引用，对其修改
    * */
-  update({ tableName, condition, handle, success = () => {} }) {
-    if (typeof handle !== "function") {
-      log_error("in update,handle必须是一个function类型");
-      return;
-    }
-
-    if (typeof success !== "function") {
-      log_error("in update,success必须是一个function类型");
-      return;
-    }
-
-    if (typeof condition !== "function") {
-      log_error("in update,condition is required,and type is function");
-      return;
-    }
-
-    const handler = () => {
-      let res = [];
-
+  update({ tableName, handler, condition = () => true }) {
+    return this.__action(() =>
       this.__create_transaction(
         tableName,
-        "readwrite"
-      ).openCursor().onsuccess = e =>
-        this.__cursor_success(e, {
-          condition,
-          handler: ({ currentValue, cursor }) => {
-            handle(currentValue);
-            res.push(currentValue);
-            cursor.update(currentValue);
-          },
-          over: () => {
-            if (res.length == 0) {
-              log_error(`in update ,数据库中没有任何符合condition的元素`);
-              return;
+        (store) => {
+          return new Promise(async (resolve, reject) => {
+            try {
+              const res = [];
+              let index = 0;
+              this.__openCursor(store, async (cursor) => {
+                if (cursor) {
+                  let curValue = cursor.value;
+                  if (await condition(curValue, index)) {
+                    await handler(curValue);
+                    cursor.update(curValue);
+                    res.push(curValue);
+                  }
+                  cursor.continue();
+                  index++;
+                } else {
+                  resolve(res);
+                }
+              });
+            } catch (error) {
+              reject(error);
             }
-            success(res);
-          }
-        });
-    };
-    this.__action(handler);
+          });
+        },
+        "readwrite"
+      )
+    );
   }
 
   /**
-   * @method 查询数据（主键值）
-   * @param {Object}
-   *   @property {String} tableName 表名
-   *   @property {Number|String} target 主键值
-   *   @property {Function} [success] 查询成功的回调，返回查询成功的数据   @return {Object} 返回查到的结果
-   *
+   * @method 开启游标
+   * @param  Store
+   * @param  callback {游标}
    * */
-  query_by_primaryKey({ tableName, target, success = () => {} }) {
-    if (typeof success !== "function") {
-      log_error("in query_by_primaryKey,success必须是一个Function类型");
-      return;
-    }
-    const handleFn = () => {
-      this.__create_transaction(tableName, "readonly").get(
-        target
-      ).onsuccess = e => {
-        const result = e.target.result;
-        success(result || null);
-      };
-    };
-    this.__action(handleFn);
-  }
+  __openCursor(store, callback) {
+    const request = store.openCursor();
 
-  /**
-   * @method 查询数据（索引）
-   * @param {Object}
-   *   @property {String} tableName 表名
-   *   @property {Number|String} indexName 索引名
-   *   @property {Number|String} target 索引值
-   *   @property {Function} [success] 查询成功的回调，返回查询成功的数据   @return {Object} 返回查到的结果
-   *
-   * */
-  query_by_index({ tableName, indexName, target, success = () => {} }) {
-    if (typeof success !== "function") {
-      log_error("in query_by_index,success必须是一个Function类型");
-      return;
-    }
-    const handleFn = () => {
-      this.__create_transaction(tableName, "readonly")
-        .index(indexName)
-        .get(target).onsuccess = e => {
-        const result = e.target.result;
-        success(result || null);
-      };
+    request.onsuccess = (e) => {
+      const cursor = e.target.result;
+      callback(cursor);
     };
-    this.__action(handleFn);
-  }
-
-  /**
-   * @method 游标开启成功,遍历游标
-   * @param {Function} 条件
-   * @param {Function} 满足条件的处理方式 @arg {Object} @property cursor游标 @property currentValue当前值
-   * @param {Function} 游标遍历完执行的方法
-   * @return {Null}
-   * */
-  __cursor_success(e, { condition, handler, over }) {
-    const cursor = e.target.result;
-    if (cursor) {
-      const currentValue = cursor.value;
-      if (condition(currentValue)) handler({ cursor, currentValue });
-      cursor.continue();
-    } else {
-      over();
-    }
   }
 
   /**
    * @method 开启事务
    * @param {String} 表名
    * @param {String} 事务权限
-   * @return store
+   * @return {Promise}
    * */
-  __create_transaction(tableName, mode = "readwrite") {
-    if (!tableName || !mode) {
-      throw new Error("in __create_transaction,tableName and mode is required");
-    }
-    const transaction = this.db.transaction(tableName, mode);
-    return transaction.objectStore(tableName);
+  __create_transaction(tableName, handler, mode = "readwrite") {
+    return new Promise(async (resolve, reject) => {
+      if (!tableName || !mode) {
+        reject();
+        throw new Error(
+          "in __create_transaction,tableName and mode is required"
+        );
+      }
+      const transaction = this.db.transaction(tableName, mode);
+
+      const store = transaction.objectStore(tableName);
+
+      let data = null;
+      try {
+        data = await handler(store);
+      } catch (error) {
+        reject(error);
+      }
+
+      transaction.oncomplete = (event) => {
+        resolve({ data, event });
+      };
+      transaction.onerror = (event) => {
+        reject({
+          name: NAME,
+          msg: event.target.error,
+          event,
+        });
+      };
+    });
   }
 
   // db是异步的,保证fn执行的时候db存在
   __action(handler) {
-    const action = () => {
-      handler();
-    };
-    // 如果db不存在，加入依赖
-    if (!this.db) {
-      this._dep_.add(action);
-    } else {
-      action();
-    }
+    return new Promise((resolve, reject) => {
+      const action = async () => {
+        try {
+          const result = await handler();
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      // 如果db不存在，加入依赖
+      if (!this.db) {
+        this._dep_.add(action);
+      } else {
+        action();
+      }
+    });
   }
 
   /**

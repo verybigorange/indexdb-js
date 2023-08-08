@@ -20,7 +20,7 @@ const inputOptions = {
 };
 const outputOptions = {
   file: 'dist/Idb.js',
-  format: 'cjs',
+  format: 'umd',
   name: 'Idb'
 };
 

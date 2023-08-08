@@ -1,16 +1,15 @@
 {
   "name": "idb-js",
-  "version": "1.3.1",
+  "version": "2.0.0",
   "description": "Simple to use indexdb",
   "main": "dist/Idb.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "parcel  --port 3001 example/index.html",
     "build": "node build.js",
-    "publish":"npm publish --access public",
-    "doc":"docsify serve docs"
+    "publish": "npm publish --access public",
+    "doc": "docsify serve docs"
   },
-
   "files": [
     "src",
     "dist/*.js",
@@ -36,7 +35,7 @@
     "babel-plugin-external-helpers": "^6.22.0",
     "babel-preset-env": "^1.7.0",
     "chalk": "^2.4.1",
-    "parcel-bundler": "^1.10.3",
+    "parcel-bundler": "^1.12.5",
     "rmrf": "^2.0.0",
     "rollup": "^0.67.3",
     "rollup-plugin-babel": "^3.0.7",

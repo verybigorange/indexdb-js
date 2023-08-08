@@ -21,3 +21,17 @@
     - `delete_by_primaryKey`
     - `update`
     - `update_by_primaryKey`
+
+### 2.0.0
+  - `2023-08-08`
+    - 增删查改全面升级
+      - 支持 `promise`
+      - `condition` 中注入 `index`
+    - 废弃部分API
+      - `close_db`
+      - `delete_db`
+      - `clear_table`
+      - `delete_by_primaryKey`
+      - `query_by_primaryKey`
+      - `query_by_index`
+    - `insert` 更改为 `add`
