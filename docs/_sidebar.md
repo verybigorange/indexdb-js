@@ -9,5 +9,3 @@
   * [查询](  /lib/_query.md)
   * [修改](  /lib/_update.md)
   * [其他](  /lib/_other.md)
-* 关于
-  * [license](/about/_license.md)
