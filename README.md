@@ -1,8 +1,6 @@
 # idb-js
 基于indexdb本地数据库的封装
 
-[文档地址](https://verybigorange.github.io/idb-js/)
-
 ### _安装：_
 ```
     npm install idb-js --save
