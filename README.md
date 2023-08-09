@@ -179,3 +179,8 @@ console.log("全部数据修改-增加新字段：", res);
 ```
 
 关于IDBDatabase对象更多信息，请查看 https://developer.mozilla.org/zh-CN/docs/Web/API/IDBDatabase
+
+
+### TODO
+- 增加单元测试
+- 支持Typescript
